@@ -1,7 +1,10 @@
 import sys, petsc4py
 petsc4py.init(sys.argv)
 from petsc4py import PETSc
-
+from pycuda import autoinit
+import pycuda.gpuarray as gpuarray
+import numpy as np
+import time
 # this user class is an application
 # context for the nonlinear problem
 # at hand; it contains some parametes
@@ -19,6 +22,9 @@ class Bratu2D:
         elif impl == 'fortran':
             from bratu2df90 import bratu2d
             order = 'f'
+        elif impl == 'cuda':
+            from bratu2dcu import bratu2d
+            order = None
         else:
             raise ValueError('invalid implementation')
         self.compute = bratu2d
@@ -28,18 +34,30 @@ class Bratu2D:
         nx, ny = self.nx, self.ny
         alpha = self.alpha
         order = self.order
-        x = X[...].reshape(nx, ny, order=order)
-        f = F[...].reshape(nx, ny, order=order)
-        self.compute(alpha, x, f)
+        if impl == 'cuda':
+            x = X.getCUDAHandle()
+            f = F.getCUDAHandle()
+            self.compute(x, f, nx, ny, alpha)
+            X.restoreCUDAHandle(0)
+            F.restoreCUDAHandle(0)
+        else:
+            x = X[...].reshape(nx, ny, order=order)
+            f = F[...].reshape(nx, ny, order=order)
+            self.compute(alpha, x, f)
 
 # convenience access to
 # PETSc options database
 OptDB = PETSc.Options()
 
-nx = OptDB.getInt('nx', 32)
+nx = OptDB.getInt('nx', 128)
 ny = OptDB.getInt('ny', nx)
 alpha = OptDB.getReal('alpha', 6.8)
 impl  = OptDB.getString('impl', 'python')
+
+if impl in ['python', 'fortran']:
+    vectype = 'seq'
+else:
+    vectype = 'cusp'
 
 # create application context
 # and PETSc nonlinear solver
@@ -48,7 +66,10 @@ snes = PETSc.SNES().create()
 
 # register the function in charge of
 # computing the nonlinear residual
-f = PETSc.Vec().createSeq(nx*ny)
+f = PETSc.Vec()
+f.create()
+f.setType(vectype)
+f.setSizes(nx*ny)
 snes.setFunction(appc.evalFunction, f)
 
 # configure the nonlinear solver
@@ -59,29 +80,21 @@ snes.setFromOptions()
 
 # solve the nonlinear problem
 b, x = None, f.duplicate()
-x.set(0) # zero inital guess
+x.set(0.0) # zero inital guess
+t1 = time.clock()
 snes.solve(b, x)
+t2 = time.clock()
+print 'Time for solve: ', t2-t1
 
-if OptDB.getBool('plot', True):
-    da = PETSc.DMDA().create([nx,ny])
-    u = da.createGlobalVec()
-    x.copy(u)
-    draw = PETSc.Viewer.DRAW()
-    OptDB['draw_pause'] = 1
-    draw(u)
-
-if OptDB.getBool('plot_mpl', False):
-    try:
-        from matplotlib import pylab
-    except ImportError:
-        PETSc.Sys.Print("matplotlib not available")
-    else:
-        from numpy import mgrid
-        X, Y =  mgrid[0:1:1j*nx,0:1:1j*ny]
-        Z = x[...].reshape(nx,ny)
-        pylab.figure()
-        pylab.contourf(X,Y,Z)
-        pylab.colorbar()
-        pylab.plot(X.ravel(),Y.ravel(),'.k')
-        pylab.axis('equal')
-        pylab.show()
+if OptDB.getBool('plot_mpl', True):
+    import matplotlib.pyplot as plt
+    from numpy import mgrid
+    X, Y =  mgrid[0:1:1j*nx,0:1:1j*ny]
+    Z = x[...].reshape(nx,ny)
+    plt.figure()
+    plt.contourf(X,Y,Z)
+    plt.colorbar()
+    plt.plot(X.ravel(),Y.ravel(),'.k')
+    plt.axis('equal')
+    plt.show()
+    plt.savefig('bratu2dsolution.png')
