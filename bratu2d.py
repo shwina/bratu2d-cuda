@@ -49,7 +49,7 @@ class Bratu2D:
 # PETSc options database
 OptDB = PETSc.Options()
 
-nx = OptDB.getInt('nx', 128)
+nx = OptDB.getInt('nx', 256)
 ny = OptDB.getInt('ny', nx)
 alpha = OptDB.getReal('alpha', 6.8)
 impl  = OptDB.getString('impl', 'python')
@@ -93,8 +93,6 @@ if OptDB.getBool('plot_mpl', True):
     Z = x[...].reshape(nx,ny)
     plt.figure()
     plt.contourf(X,Y,Z)
-    plt.colorbar()
-    plt.plot(X.ravel(),Y.ravel(),'.k')
     plt.axis('equal')
     plt.show()
     plt.savefig('bratu2dsolution.png')

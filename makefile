@@ -6,7 +6,7 @@ PYTHON=python
 F2PY = f2py --quiet
 F2PY_FLAGS =
 F2PY_FLAGS = -DF2PY_REPORT_ATEXIT -DF2PY_REPORT_ON_ARRAY_COPY=0
-F2PY_FLAGS =--noarch --f90flags=''
+F2PY_FLAGS =--noarch --f90flags='-O3'
 F2PY_FLAGS +=-DF2PY_REPORT_ON_ARRAY_COPY=1
 CUDA_FLAGS = -cubin -arch=sm_35
 
@@ -30,12 +30,8 @@ ${MODULE}.so: ${MODULE}.f90
 run_f90: ${MODULE}
 	${MPIEXEC} ${PYTHON} bratu2d.py -impl fortran
 
-.PHONY:bratu2dcu
-bratu2dcu: bratu2dcu.py bratu2dcu.cu
-	nvcc ${CUDA_FLAGS} bratu2dcu.cu
-
 .PHONY:run_cuda
-run_cuda: bratu2dcu
+run_cuda:
 	${MPIEXEC} ${PYTHON} bratu2d.py -impl cuda
 
 .PHONY:clean
